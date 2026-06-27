@@ -29,3 +29,9 @@ python-dotenv==1.0.1
 
 # Testing
 pytest==8.3.4
+
+streamlit
+pandas
+plotly
+google-generativeai
+sqlalchemy
