@@ -13,6 +13,8 @@ class Competitor:
     external_url: Optional[str] = None
     category: Optional[str] = None
     verified: Optional[bool] = None
+    profile_pic_url: Optional[str] = None
+    sample_posts: Optional[list] = None
 
     def to_dict(self):
         return asdict(self)

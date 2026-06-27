@@ -1,6 +1,6 @@
 import time
 from utils.logger import get_logger
-from config.constants import MAX_COMPETITORS, YOUTUBE_ROTATION_ERRORS, YOUTUBE_ROTATION_HTTP_CODES, APIFY_ROTATION_ERRORS, APIFY_ROTATION_HTTP_CODES
+from config.constants import MAX_COMPETITORS, MAX_COMPETITOR_DEEP_COLLECTION, YOUTUBE_ROTATION_ERRORS, YOUTUBE_ROTATION_HTTP_CODES, APIFY_ROTATION_ERRORS, APIFY_ROTATION_HTTP_CODES
 from config.settings import Settings
 from utils.retry import with_retry
 from googleapiclient.discovery import build
@@ -102,9 +102,15 @@ class CompetitorDiscovery:
         return {"raw_data": raw_items, "competitors": results}
 
     def discover_competitors(self, keyword: str, platform: str, cache=None) -> dict:
+        if platform.lower() == "tiktok":
+            return {
+                "supported": False,
+                "reason": "TikTok competitor discovery is currently not supported."
+            }
+
         logger.info(f"Discovering up to {MAX_COMPETITORS} competitors for '{keyword}' on {platform}")
         
-        cache_key = f"discover:{platform.lower()}:{keyword.lower().replace(' ', '_')}"
+        cache_key = f"competitors:{platform.lower()}:{keyword.lower().replace(' ', '_')}"
         raw_data = None
         if cache:
             try:
@@ -123,18 +129,68 @@ class CompetitorDiscovery:
             logger.warning(f"Discovery for platform '{platform}' is not fully implemented or supported.")
             result = {"raw_data": [], "competitors": []}
             
-        if cache and result and result.get("competitors"):
-            try:
-                # Competitor objects are not json serializable for cache, we need to serialize them first
-                # Actually, the returned raw_data list is what should be cached.
-                # To cache everything properly, we serialize competitors.
-                cache_payload = {
-                    "raw_data": result["raw_data"],
-                    "competitors": [c.to_dict() if hasattr(c, 'to_dict') else c for c in result["competitors"]]
-                }
-                cache.set(cache_key, cache_payload)
-            except Exception as e:
-                logger.warning(f"Cache write failed: {e}")
+        # Deep Collection Logic
+        if result and result.get("competitors"):
+            competitors_list = result["competitors"]
+            
+            # Instagram Deep Collection
+            if platform.lower() == "instagram":
+                from collectors.instagram_collector import InstagramCollector
+                ig_collector = InstagramCollector()
+                
+                for i, comp in enumerate(competitors_list):
+                    if i >= MAX_COMPETITOR_DEEP_COLLECTION:
+                        break
+                    logger.info(f"Deep collecting Instagram competitor: {comp.username}")
+                    data = ig_collector.collect_posts(comp.username, max_results=5, cache=cache)
+                    
+                    norm_account = data.get("normalized_account", {})
+                    norm_posts = data.get("normalized_posts", [])
+                    
+                    comp.full_name = norm_account.get("full_name", comp.full_name)
+                    comp.followers = norm_account.get("followers", comp.followers)
+                    comp.following = norm_account.get("following", comp.following)
+                    comp.posts_count = norm_account.get("posts_count", comp.posts_count)
+                    comp.bio = norm_account.get("bio", comp.bio)
+                    comp.verified = norm_account.get("verified", comp.verified)
+                    comp.profile_pic_url = norm_account.get("profile_pic_url", None)
+                    comp.external_url = norm_account.get("external_url", comp.external_url)
+                    comp.sample_posts = norm_posts
+            
+            # YouTube Deep Collection
+            elif platform.lower() == "youtube":
+                from collectors.youtube_collector import YouTubeCollector
+                yt_collector = YouTubeCollector()
+                
+                for i, comp in enumerate(competitors_list):
+                    if i >= MAX_COMPETITOR_DEEP_COLLECTION:
+                        break
+                    
+                    logger.info(f"Deep collecting YouTube competitor: {comp.username}")
+                    data = yt_collector.collect_videos(comp.username, max_results=5, cache=cache)
+                    
+                    norm_account = data.get("normalized_account", {})
+                    norm_posts = data.get("normalized_posts", [])
+                    
+                    comp.full_name = norm_account.get("full_name", comp.full_name)
+                    comp.followers = norm_account.get("followers", comp.followers)
+                    comp.following = norm_account.get("following", comp.following)
+                    comp.posts_count = norm_account.get("posts_count", comp.posts_count)
+                    comp.bio = norm_account.get("bio", comp.bio)
+                    comp.verified = norm_account.get("verified", comp.verified)
+                    comp.profile_pic_url = norm_account.get("profile_pic_url", None)
+                    comp.external_url = norm_account.get("external_url", comp.external_url)
+                    comp.sample_posts = norm_posts
+
+            if cache:
+                try:
+                    cache_payload = {
+                        "raw_data": result["raw_data"],
+                        "competitors": [c.to_dict() if hasattr(c, 'to_dict') else c for c in competitors_list]
+                    }
+                    cache.set(cache_key, cache_payload)
+                except Exception as e:
+                    logger.warning(f"Cache write failed: {e}")
                 
         return result
 

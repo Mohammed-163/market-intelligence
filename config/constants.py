@@ -6,6 +6,7 @@ Project-wide constants.
 MAX_POSTS = 20
 MAX_VIDEOS = 20
 MAX_COMPETITORS = 20
+MAX_COMPETITOR_DEEP_COLLECTION = 5
 
 CACHE_TTL_DAYS = 7
 CACHE_DB_NAME = "collection_cache.db"
