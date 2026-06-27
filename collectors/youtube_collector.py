@@ -17,12 +17,28 @@ class YouTubeCollector:
             if secrets.youtube_keys else None
         )
 
-    def collect_videos(self, channel_id: str, max_results: int = MAX_VIDEOS) -> dict:
+    def collect_videos(self, channel_id: str, max_results: int = MAX_VIDEOS, cache=None) -> dict:
         if not self.rotator:
             logger.warning("No YouTube keys configured. Skipping YouTube collection.")
             return {}
             
-        raw_data = self._collect(channel_id, max_results)
+        cache_key = f"youtube:{channel_id.strip().lower()}:{max_results}"
+        raw_data = None
+        if cache:
+            try:
+                raw_data = cache.get(cache_key)
+                if raw_data is not None:
+                    logger.info(f"Cache hit for YouTube channel '{channel_id}' — skipping API call.")
+            except Exception as e:
+                logger.warning(f"Cache read failed: {e}")
+
+        if raw_data is None:
+            raw_data = self._collect(channel_id, max_results)
+            if cache and raw_data and raw_data.get("videos"):
+                try:
+                    cache.set(cache_key, raw_data)
+                except Exception as e:
+                    logger.warning(f"Cache write failed: {e}")
         videos_raw = raw_data.get("videos", [])
         comments_raw = raw_data.get("comments", [])
         

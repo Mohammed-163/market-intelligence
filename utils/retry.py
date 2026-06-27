@@ -16,6 +16,7 @@ def with_retry(
     rotator: Optional[KeyRotator] = None,
     error_patterns: FrozenSet[str] = frozenset(),
     http_codes: FrozenSet[int] = frozenset(),
+    rotator_attr: str = "rotator"
 ):
     """
     Decorator that retries a function up to MAX_RETRIES times.
@@ -33,8 +34,8 @@ def with_retry(
         def wrapper(*args, **kwargs) -> Any:
             # Resolve rotator: prefer explicit param, then self.rotator if available
             _rotator = rotator
-            if _rotator is None and args and hasattr(args[0], "rotator"):
-                _rotator = args[0].rotator
+            if _rotator is None and args and hasattr(args[0], rotator_attr):
+                _rotator = getattr(args[0], rotator_attr)
 
             attempt = 0
             while attempt < MAX_RETRIES:

@@ -7,6 +7,7 @@ from collectors.instagram_collector import InstagramCollector
 from collectors.tiktok_collector import TikTokCollector
 from collectors.competitor_discovery import CompetitorDiscovery
 from storage.json_writer import JSONWriter
+from storage.cache import Cache
 from config.constants import MAX_POSTS
 
 logger = get_logger()
@@ -73,11 +74,13 @@ def main():
 
     logger.info("Starting Market Intelligence collection...")
     settings = Settings.load()
+    
+    cache = Cache(str(settings.cache_db_path), settings.cache_ttl_days)
 
     if args.discover:
         discovery = CompetitorDiscovery()
         for platform in ["youtube", "instagram", "tiktok"]:
-            res = discovery.discover_competitors(args.discover, platform)
+            res = discovery.discover_competitors(args.discover, platform, cache=cache)
             if res:
                 res["metadata"] = {
                     "platform": platform,
@@ -90,17 +93,17 @@ def main():
 
     if args.youtube:
         collector = YouTubeCollector()
-        data = collector.collect_videos(args.youtube, max_results=args.posts)
+        data = collector.collect_videos(args.youtube, max_results=args.posts, cache=cache)
         process_and_save("youtube", args.youtube, data, args.posts)
         
     if args.instagram:
         collector = InstagramCollector()
-        data = collector.collect_posts(args.instagram, max_results=args.posts)
+        data = collector.collect_posts(args.instagram, max_results=args.posts, cache=cache)
         process_and_save("instagram", args.instagram, data, args.posts)
         
     if args.tiktok:
         collector = TikTokCollector()
-        data = collector.collect_videos_sync(args.tiktok, max_results=args.posts)
+        data = collector.collect_videos_sync(args.tiktok, max_results=args.posts, cache=cache)
         process_and_save("tiktok", args.tiktok, data, args.posts)
         
     if not any([args.youtube, args.instagram, args.tiktok, args.discover]):

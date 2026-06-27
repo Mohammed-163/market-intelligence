@@ -17,12 +17,28 @@ class InstagramCollector:
             if secrets.apify_tokens else None
         )
 
-    def collect_posts(self, username: str, max_results: int = MAX_POSTS) -> dict:
+    def collect_posts(self, username: str, max_results: int = MAX_POSTS, cache=None) -> dict:
         if not self.rotator:
             logger.warning("No Apify keys configured. Skipping Instagram collection.")
             return {}
             
-        raw_data = self._collect(username, max_results)
+        cache_key = f"instagram:{username.lower()}:{max_results}"
+        raw_data = None
+        if cache:
+            try:
+                raw_data = cache.get(cache_key)
+                if raw_data is not None:
+                    logger.info(f"Cache hit for Instagram @{username} — skipping Apify call.")
+            except Exception as e:
+                logger.warning(f"Cache read failed: {e}")
+
+        if raw_data is None:
+            raw_data = self._collect(username, max_results)
+            if cache and raw_data:
+                try:
+                    cache.set(cache_key, raw_data)
+                except Exception as e:
+                    logger.warning(f"Cache write failed: {e}")
         
         from models.account import Account
         from models.post import Post

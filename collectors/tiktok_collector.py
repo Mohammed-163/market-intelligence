@@ -7,16 +7,19 @@ from apify_client import ApifyClient
 from utils.retry import with_retry
 
 logger = get_logger()
-settings = Settings.load()
 
 class TikTokCollector:
-    @with_retry(rotator=settings.apify_rotator, error_patterns=APIFY_ROTATION_ERRORS, http_codes=APIFY_ROTATION_HTTP_CODES)
+    def __init__(self):
+        self.settings = Settings.load()
+        self.rotator = self.settings.apify_rotator
+
+    @with_retry(error_patterns=APIFY_ROTATION_ERRORS, http_codes=APIFY_ROTATION_HTTP_CODES)
     def _collect_with_apify(self, username: str, max_results: int = 20):
-        if not settings.apify_rotator:
+        if not self.rotator:
             logger.warning("No Apify keys configured for TikTok fallback.")
             return []
             
-        api_key = settings.apify_rotator.get_current_key()
+        api_key = self.rotator.get_current_key()
         client = ApifyClient(api_key)
         
         run_input = {
@@ -34,18 +37,35 @@ class TikTokCollector:
             
         return results
 
-    async def collect_videos(self, username: str, max_results: int = MAX_VIDEOS) -> dict:
-        raw_data = []
-        try:
-            async with TikTokApi() as api:
-                await api.create_sessions(ms_tokens=[], num_sessions=1, sleep_after=3)
-                user = api.user(username=username)
-                async for video in user.videos(count=max_results):
-                    raw_data.append(video.as_dict)
-        except Exception as e:
-            logger.error(f"TikTokApi failed: {e}")
-            logger.info("Falling back to Apify TikTok Scraper")
-            raw_data = self._collect_with_apify(username, max_results)
+    async def collect_videos(self, username: str, max_results: int = MAX_VIDEOS, cache=None) -> dict:
+        cache_key = f"tiktok:{username.lower()}:{max_results}"
+        raw_data = None
+        if cache:
+            try:
+                raw_data = cache.get(cache_key)
+                if raw_data is not None:
+                    logger.info(f"Cache hit for TikTok @{username} — skipping API call.")
+            except Exception as e:
+                logger.warning(f"Cache read failed: {e}")
+
+        if raw_data is None:
+            raw_data = []
+            try:
+                async with TikTokApi() as api:
+                    await api.create_sessions(ms_tokens=[], num_sessions=1, sleep_after=3)
+                    user = api.user(username=username)
+                    async for video in user.videos(count=max_results):
+                        raw_data.append(video.as_dict)
+            except Exception as e:
+                logger.error(f"TikTokApi failed: {e}")
+                logger.info("Falling back to Apify TikTok Scraper")
+                raw_data = self._collect_with_apify(username, max_results)
+            
+            if cache and raw_data:
+                try:
+                    cache.set(cache_key, raw_data)
+                except Exception as e:
+                    logger.warning(f"Cache write failed: {e}")
                 
         from models.account import Account
         from models.post import Post
@@ -99,5 +119,5 @@ class TikTokCollector:
             "competitors": []
         }
 
-    def collect_videos_sync(self, username: str, max_results: int = MAX_VIDEOS):
-        return asyncio.run(self.collect_videos(username, max_results))
+    def collect_videos_sync(self, username: str, max_results: int = MAX_VIDEOS, cache=None):
+        return asyncio.run(self.collect_videos(username, max_results, cache))
