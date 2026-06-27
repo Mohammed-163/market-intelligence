@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQLite cache
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment files (secrets loaded from GitHub Secrets)
+.env
+.env.local
+.env.production
+
+# Logs (keep structure, ignore content)
+data/logs/*.log
+
+# Byte-compiled
+*.pyc

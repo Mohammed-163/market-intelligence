@@ -1,0 +1,28 @@
+# YouTube Data API
+google-api-python-client==2.159.0
+google-auth==2.37.0
+google-auth-httplib2==0.2.0
+
+# Apify (Instagram + TikTok scraping)
+apify-client==1.8.1
+
+# TikTok unofficial API (primary attempt before Apify fallback)
+TikTokApi==6.5.2
+playwright==1.49.1
+
+# HTTP & Retry
+requests==2.32.3
+tenacity==9.0.0
+urllib3==2.3.0
+
+# Logging
+loguru==0.7.3
+
+# Date/Time
+python-dateutil==2.9.0
+
+# Git automation
+GitPython==3.1.44
+
+# Environment
+python-dotenv==1.0.1
