@@ -1,0 +1,41 @@
+name: Test Instagram Collector
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test_instagram:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      - name: Install requirements
+        run: pip install -r requirements.txt
+        
+      - name: Execute Instagram Collector Test
+        env:
+          APIFY_1: ${{ secrets.APIFY_1 }}
+          APIFY_2: ${{ secrets.APIFY_2 }}
+          APIFY_3: ${{ secrets.APIFY_3 }}
+          YOUTUBE_1: ${{ secrets.YOUTUBE_1 }}
+          YOUTUBE_2: ${{ secrets.YOUTUBE_2 }}
+          GEMINI_1: ${{ secrets.GEMINI_1 }}
+          GEMINI_2: ${{ secrets.GEMINI_2 }}
+        run: python test_ig.py
+        
+      - name: Upload collected data
+        uses: actions/upload-artifact@v4
+        with:
+          name: instagram-data
+          path: data/accounts/*.json
+          if-no-files-found: ignore
