@@ -91,7 +91,8 @@ class InstagramCollector:
         from apify_client import ApifyClient
         client  = ApifyClient(api_key)
         run = client.actor("apify/instagram-scraper").call(run_input={
-            "usernames":     [username],
+            "directUrls":    [f"https://www.instagram.com/{username}/"],
+            "resultsType":   "posts",
             "resultsLimit":  max_results,
             "addParentData": True,
         })
