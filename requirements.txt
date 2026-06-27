@@ -10,9 +10,6 @@ apify-client==1.8.1
 TikTokApi==6.5.2
 playwright==1.49.1
 
-# Google Gemini
-google-generativeai==0.8.3
-
 # HTTP & Retry
 requests==2.32.3
 tenacity==9.0.0
@@ -29,9 +26,3 @@ python-dotenv==1.0.1
 
 # Testing
 pytest==8.3.4
-
-streamlit
-pandas
-plotly
-google-generativeai
-sqlalchemy
