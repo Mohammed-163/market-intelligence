@@ -75,9 +75,11 @@ class CompetitorDiscovery:
         
         run = client.actor("apify/instagram-scraper").call(run_input=run_input)
         
+        dataset_id = run.get("defaultDatasetId") if isinstance(run, dict) else getattr(run, "defaultDatasetId", getattr(run, "default_dataset_id", None))
+        
         results = []
         seen = set()
-        for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+        for item in client.dataset(dataset_id).iterate_items():
             username = item.get("ownerUsername")
             if username and username not in seen:
                 seen.add(username)

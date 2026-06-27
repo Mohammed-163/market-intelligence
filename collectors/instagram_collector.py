@@ -95,4 +95,8 @@ class InstagramCollector:
             "resultsLimit":  max_results,
             "addParentData": True,
         })
-        return list(client.dataset(run["defaultDatasetId"]).iterate_items())
+        
+        # In apify-client v3, run is an object, not a dict.
+        dataset_id = run.get("defaultDatasetId") if isinstance(run, dict) else getattr(run, "defaultDatasetId", getattr(run, "default_dataset_id", None))
+        
+        return list(client.dataset(dataset_id).iterate_items())
