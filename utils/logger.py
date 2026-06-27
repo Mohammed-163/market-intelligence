@@ -1,6 +1,10 @@
 import sys
+from pathlib import Path
 from loguru import logger
 from config.constants import LOG_FILE
+
+# Ensure log directory exists before configuring file handler
+Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
 
 logger.remove()
 logger.add(sys.stderr, level="INFO")

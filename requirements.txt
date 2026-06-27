@@ -10,6 +10,9 @@ apify-client==1.8.1
 TikTokApi==6.5.2
 playwright==1.49.1
 
+# Google Gemini
+google-generativeai==0.8.3
+
 # HTTP & Retry
 requests==2.32.3
 tenacity==9.0.0
@@ -21,11 +24,8 @@ loguru==0.7.3
 # Date/Time
 python-dateutil==2.9.0
 
-# Git automation
-GitPython==3.1.44
-
 # Environment
 python-dotenv==1.0.1
 
-apify-client==1.8.1
-apify-shared==1.1.2
+# Testing
+pytest==8.3.4
