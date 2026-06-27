@@ -24,22 +24,26 @@ def test_collection():
     collector = InstagramCollector()
     
     try:
-        posts = collector.collect_posts(username, max_results=20)
+        data = collector.collect_posts(username, max_results=20)
+        posts = data.get("raw_posts", [])
+        raw_account = data.get("raw_account", {})
+        raw_comments = data.get("raw_comments", [])
     except Exception as e:
         logger.error(f"Collection failed: {e}")
         posts = []
+        raw_account = {}
+        raw_comments = []
 
     profile = {}
-    if posts and "ownerUsername" in posts[0]:
+    if raw_account:
         profile = {
-            "username": posts[0].get("ownerUsername"),
-            "fullName": posts[0].get("ownerFullName"),
-            "followersCount": posts[0].get("followersCount", 0),
-            "followsCount": posts[0].get("followsCount", 0)
+            "username": raw_account.get("username"),
+            "fullName": raw_account.get("fullName"),
+            "followersCount": raw_account.get("followersCount", 0),
+            "followsCount": raw_account.get("followsCount", 0)
         }
 
     formatted_posts = []
-    raw_comments = []
     for p in posts:
         formatted_posts.append({
             "post_url": p.get("url"),
@@ -47,10 +51,6 @@ def test_collection():
             "media_type": p.get("type"),
             "timestamp": p.get("timestamp"),
         })
-        
-        if "latestComments" in p:
-            for c in p["latestComments"][:20]: # up to 20 per post
-                raw_comments.append(c)
             
     result = {
       "platform": "instagram",
