@@ -21,21 +21,19 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
         
-      - name: Discover Competitors and Analyze
+      - name: Discover Competitors and Collect
         env:
           APIFY_1: ${{ secrets.APIFY_1 }}
           APIFY_2: ${{ secrets.APIFY_2 }}
           APIFY_3: ${{ secrets.APIFY_3 }}
           YOUTUBE_1: ${{ secrets.YOUTUBE_1 }}
           YOUTUBE_2: ${{ secrets.YOUTUBE_2 }}
-          GEMINI_1: ${{ secrets.GEMINI_1 }}
-          GEMINI_2: ${{ secrets.GEMINI_2 }}
         run: |
-          python main.py --discover "tech" --analyze
+          python main.py --discover "tech"
           
-      - name: Upload Database
+      - name: Upload Collected Data
         uses: actions/upload-artifact@v4
         with:
-          name: market-db
-          path: market_data.db
+          name: market-data
+          path: data/
           if-no-files-found: ignore

@@ -1,6 +1,6 @@
 import unittest
 import os
-from utils.cache import Cache
+from storage.cache import Cache
 from utils.logger import get_logger
 
 class TestUtils(unittest.TestCase):
