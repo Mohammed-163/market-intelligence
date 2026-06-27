@@ -74,6 +74,11 @@ def main():
     args = parser.parse_args()
 
     logger.info("Starting Market Intelligence collection...")
+    logger.info(f"YouTube target: {args.youtube}")
+    logger.info(f"Instagram target: {args.instagram}")
+    logger.info(f"TikTok target: {args.tiktok}")
+    logger.info(f"Discovery keyword: {args.discover}")
+    
     settings = Settings.load()
     
     cache = Cache(str(settings.cache_db_path), settings.cache_ttl_days)

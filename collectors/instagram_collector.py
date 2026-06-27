@@ -18,6 +18,7 @@ class InstagramCollector:
         )
 
     def collect_posts(self, username: str, max_results: int = MAX_POSTS, cache=None) -> dict:
+        logger.info("Starting Instagram collection...")
         if not self.rotator:
             logger.warning("No Apify keys configured. Skipping Instagram collection.")
             return {}

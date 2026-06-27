@@ -38,6 +38,7 @@ class TikTokCollector:
         return results
 
     async def collect_videos(self, username: str, max_results: int = MAX_VIDEOS, cache=None) -> dict:
+        logger.info("Starting TikTok collection...")
         cache_key = f"tiktok:{username.lower()}:{max_results}"
         raw_data = None
         if cache:

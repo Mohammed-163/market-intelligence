@@ -51,6 +51,7 @@ class YouTubeCollector:
         return identifier
 
     def collect_videos(self, channel_id: str, max_results: int = MAX_VIDEOS, cache=None) -> dict:
+        logger.info("Starting YouTube collection...")
         if not self.rotator:
             logger.warning("No YouTube keys configured. Skipping YouTube collection.")
             return {}

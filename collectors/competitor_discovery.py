@@ -102,6 +102,7 @@ class CompetitorDiscovery:
         return {"raw_data": raw_items, "competitors": results}
 
     def discover_competitors(self, keyword: str, platform: str, cache=None) -> dict:
+        logger.info("Starting competitor discovery...")
         if platform.lower() == "tiktok":
             return {
                 "supported": False,
