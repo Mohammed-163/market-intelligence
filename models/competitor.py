@@ -15,6 +15,7 @@ class Competitor:
     verified: Optional[bool] = None
     profile_pic_url: Optional[str] = None
     sample_posts: Optional[list] = None
+    channel_id: Optional[str] = None
 
     def to_dict(self):
         return asdict(self)

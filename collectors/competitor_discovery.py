@@ -55,7 +55,8 @@ class CompetitorDiscovery:
                     bio=snippet.get("description", ""),
                     external_url=f"https://youtube.com/{snippet.get('customUrl', '')}",
                     category=None,
-                    verified=None
+                    verified=None,
+                    channel_id=item.get("id", "")
                 )
                 results.append(competitor)
                 

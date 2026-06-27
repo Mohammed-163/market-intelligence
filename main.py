@@ -66,6 +66,7 @@ def process_and_save(platform: str, username: str, data: dict, posts_limit: int)
 
 def main():
     parser = argparse.ArgumentParser(description="Market Intelligence Data Collector")
+    parser.add_argument("--pipeline", help="Run full E2E pipeline from a single Instagram username")
     parser.add_argument("--youtube", help="YouTube Channel ID")
     parser.add_argument("--instagram", help="Instagram Username")
     parser.add_argument("--tiktok", help="TikTok Username")
@@ -74,15 +75,25 @@ def main():
     args = parser.parse_args()
 
     logger.info("Starting Market Intelligence collection...")
+    logger.info(f"Pipeline target: {args.pipeline}")
     logger.info(f"YouTube target: {args.youtube}")
     logger.info(f"Instagram target: {args.instagram}")
     logger.info(f"TikTok target: {args.tiktok}")
     logger.info(f"Discovery keyword: {args.discover}")
     
     settings = Settings.load()
-    
     cache = Cache(str(settings.cache_db_path), settings.cache_ttl_days)
 
+    # ── Full automated pipeline (single input) ──
+    if args.pipeline:
+        if not validate_username(args.pipeline, "instagram"):
+            logger.error(f"Invalid Instagram username: {args.pipeline}")
+            return
+        from pipeline import run_pipeline
+        run_pipeline(args.pipeline, args.posts, cache, settings=settings)
+        return
+
+    # ── Legacy individual collectors (backward compatible) ──
     if args.discover:
         discovery = CompetitorDiscovery()
         for platform in ["youtube", "instagram", "tiktok"]:
@@ -121,7 +132,7 @@ def main():
             data = collector.collect_videos_sync(args.tiktok, max_results=args.posts, cache=cache)
             process_and_save("tiktok", args.tiktok, data, args.posts)
         
-    if not any([args.youtube, args.instagram, args.tiktok, args.discover]):
+    if not any([args.pipeline, args.youtube, args.instagram, args.tiktok, args.discover]):
         logger.warning("No targets specified. Use --help for usage.")
 
 if __name__ == "__main__":

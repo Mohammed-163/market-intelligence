@@ -21,38 +21,25 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
         
-      - name: Collect Data
+      - name: Run Pipeline
         env:
           APIFY_1: ${{ secrets.APIFY_1 }}
           APIFY_2: ${{ secrets.APIFY_2 }}
           APIFY_3: ${{ secrets.APIFY_3 }}
           YOUTUBE_1: ${{ secrets.YOUTUBE_1 }}
           YOUTUBE_2: ${{ secrets.YOUTUBE_2 }}
+          GEMINI_1: ${{ secrets.GEMINI_1 }}
+          GEMINI_2: ${{ secrets.GEMINI_2 }}
           IG_USER: ${{ vars.IG_USER }}
-          YT_CHANNEL: ${{ vars.YT_CHANNEL }}
-          KEYWORD: ${{ vars.KEYWORD }}
-          TIKTOK_USER: ${{ vars.TIKTOK_USER }}
         run: |
           echo "IG_USER=$IG_USER"
-          echo "YT_CHANNEL=$YT_CHANNEL"
-          echo "KEYWORD=$KEYWORD"
-          echo "TIKTOK_USER=$TIKTOK_USER"
           
-          if [ -n "$IG_USER" ]; then
-            python main.py --instagram "$IG_USER" --posts 5
+          if [ -z "$IG_USER" ]; then
+            echo "ERROR: IG_USER variable is not set. Go to Settings > Secrets and variables > Actions > Variables and add IG_USER."
+            exit 1
           fi
           
-          if [ -n "$YT_CHANNEL" ]; then
-            python main.py --youtube "$YT_CHANNEL" --posts 5
-          fi
-          
-          if [ -n "$TIKTOK_USER" ]; then
-            python main.py --tiktok "$TIKTOK_USER" --posts 5
-          fi
-          
-          if [ -n "$KEYWORD" ]; then
-            python main.py --discover "$KEYWORD" --posts 5
-          fi
+          python main.py --pipeline "$IG_USER" --posts 5
           
       - name: Upload Collected Data
         uses: actions/upload-artifact@v4
