@@ -34,20 +34,53 @@ class TikTokCollector:
             
         return results
 
-    async def collect_videos(self, username: str, max_results: int = MAX_VIDEOS):
-        results = []
+    async def collect_videos(self, username: str, max_results: int = MAX_VIDEOS) -> dict:
+        raw_data = []
         try:
             async with TikTokApi() as api:
                 await api.create_sessions(ms_tokens=[], num_sessions=1, sleep_after=3)
                 user = api.user(username=username)
                 async for video in user.videos(count=max_results):
-                    results.append(video.as_dict)
+                    raw_data.append(video.as_dict)
         except Exception as e:
             logger.error(f"TikTokApi failed: {e}")
             logger.info("Falling back to Apify TikTok Scraper")
-            results = self._collect_with_apify(username, max_results)
+            raw_data = self._collect_with_apify(username, max_results)
                 
-        return results
+        from models.account import Account
+        from models.post import Post
+        
+        account = Account(
+            platform="tiktok",
+            username=username,
+            followers=None,
+            following=None,
+            posts_count=None,
+            bio=None
+        )
+        posts = []
+        
+        if raw_data:
+            for item in raw_data:
+                # Loose parse since format depends on Apify vs Native
+                stats = item.get('stats', item)
+                post = Post(
+                    post_id=str(item.get('id') or item.get('video_id') or ""),
+                    caption=item.get('desc') or item.get('text') or "",
+                    likes=item.get('diggCount') or stats.get('diggCount'),
+                    comments=item.get('commentCount') or stats.get('commentCount'),
+                    views=item.get('playCount') or stats.get('playCount'),
+                    posted_at=str(item.get('createTime') or item.get('create_time') or ""),
+                    type="video"
+                )
+                posts.append(post)
+
+        return {
+            "raw_data": raw_data,
+            "account": account,
+            "posts": posts,
+            "comments": []
+        }
 
     def collect_videos_sync(self, username: str, max_results: int = MAX_VIDEOS):
         return asyncio.run(self.collect_videos(username, max_results))

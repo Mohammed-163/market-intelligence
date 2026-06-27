@@ -5,6 +5,7 @@ from config.settings import Settings
 from utils.retry import with_retry
 from googleapiclient.discovery import build
 from apify_client import ApifyClient
+from models.competitor import Competitor
 
 logger = get_logger()
 settings = Settings.load()
@@ -12,10 +13,10 @@ settings = Settings.load()
 class CompetitorDiscovery:
     
     @with_retry(rotator=settings.youtube_rotator, error_patterns=YOUTUBE_ROTATION_ERRORS, http_codes=YOUTUBE_ROTATION_HTTP_CODES)
-    def _discover_youtube(self, keyword: str):
+    def _discover_youtube(self, keyword: str) -> dict:
         if not settings.youtube_rotator:
             logger.warning("No YouTube keys configured for discovery.")
-            return []
+            return {"raw_data": [], "competitors": []}
             
         api_key = settings.youtube_rotator.get_current_key()
         youtube = build('youtube', 'v3', developerKey=api_key)
@@ -31,20 +32,19 @@ class CompetitorDiscovery:
         results = []
         for item in response.get("items", []):
             snippet = item.get("snippet", {})
-            results.append({
-                "platform": "youtube",
-                "username": snippet.get("channelTitle"),
-                "channel_id": item.get("id", {}).get("channelId"),
-                "description": snippet.get("description"),
-                "keyword": keyword
-            })
-        return results
+            competitor = Competitor(
+                username=snippet.get("channelTitle"),
+                platform="youtube",
+                followers=None
+            )
+            results.append(competitor)
+        return {"raw_data": response, "competitors": results}
 
     @with_retry(rotator=settings.apify_rotator, error_patterns=APIFY_ROTATION_ERRORS, http_codes=APIFY_ROTATION_HTTP_CODES)
-    def _discover_instagram(self, keyword: str):
+    def _discover_instagram(self, keyword: str) -> dict:
         if not settings.apify_rotator:
             logger.warning("No Apify keys configured for IG discovery.")
-            return []
+            return {"raw_data": [], "competitors": []}
             
         api_key = settings.apify_rotator.get_current_key()
         client = ApifyClient(api_key)
@@ -58,25 +58,23 @@ class CompetitorDiscovery:
         run = client.actor("apify/instagram-scraper").call(run_input=run_input)
         
         results = []
-        for item in client.dataset(run["defaultDatasetId"]).iterate_items():
-            results.append({
-                "platform": "instagram",
-                "username": item.get("ownerUsername"),
-                "keyword": keyword
-            })
-        
-        # Deduplicate usernames
-        unique = []
         seen = set()
-        for r in results:
-            if r["username"] and r["username"] not in seen:
-                seen.add(r["username"])
-                unique.append(r)
-                if len(unique) >= MAX_COMPETITORS:
+        for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+            username = item.get("ownerUsername")
+            if username and username not in seen:
+                seen.add(username)
+                competitor = Competitor(
+                    username=username,
+                    platform="instagram",
+                    followers=None
+                )
+                results.append(competitor)
+                if len(results) >= MAX_COMPETITORS:
                     break
-        return unique
+                    
+        return {"raw_data": run, "competitors": results}
 
-    def discover_competitors(self, keyword: str, platform: str):
+    def discover_competitors(self, keyword: str, platform: str) -> dict:
         logger.info(f"Discovering up to {MAX_COMPETITORS} competitors for '{keyword}' on {platform}")
         
         if platform.lower() == "youtube":
@@ -85,5 +83,5 @@ class CompetitorDiscovery:
             return self._discover_instagram(keyword)
         else:
             logger.warning(f"Discovery for platform '{platform}' is not fully implemented or supported.")
-            return [{"username": f"competitor_{i}_{platform}", "keyword": keyword} for i in range(MAX_COMPETITORS)]
+            return {"raw_data": [], "competitors": []}
 
