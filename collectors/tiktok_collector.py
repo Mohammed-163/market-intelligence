@@ -49,20 +49,26 @@ class TikTokCollector:
                 
         from models.account import Account
         from models.post import Post
+        from datetime import datetime, timezone
         
-        account = Account(
-            platform="tiktok",
-            username=username,
-            followers=None,
-            following=None,
-            posts_count=None,
-            bio=None
-        )
+        account = None
         posts = []
+        raw_account = []
         
         if raw_data:
+            first = raw_data[0]
+            author = first.get('author', {})
+            raw_account.append(author)
+            account = Account(
+                platform="tiktok",
+                username=username,
+                followers=author.get('followerCount') or author.get('stats', {}).get('followerCount'),
+                following=author.get('followingCount') or author.get('stats', {}).get('followingCount'),
+                posts_count=author.get('videoCount') or author.get('stats', {}).get('videoCount'),
+                bio=author.get('signature')
+            )
+            
             for item in raw_data:
-                # Loose parse since format depends on Apify vs Native
                 stats = item.get('stats', item)
                 post = Post(
                     post_id=str(item.get('id') or item.get('video_id') or ""),
@@ -75,11 +81,22 @@ class TikTokCollector:
                 )
                 posts.append(post)
 
+        metadata = {
+            "collection_date": datetime.now(timezone.utc).isoformat(),
+            "platform": "tiktok",
+            "collector_version": "2.0",
+            "api_used": "tiktok_unofficial/apify_fallback",
+            "account_requested": username
+        }
+
         return {
-            "raw_data": raw_data,
-            "account": account,
-            "posts": posts,
-            "comments": []
+            "metadata": metadata,
+            "raw_account": raw_account,
+            "raw_posts": raw_data,
+            "raw_comments": [],
+            "normalized_account": account.to_dict() if account else {},
+            "normalized_posts": [p.to_dict() for p in posts],
+            "competitors": []
         }
 
     def collect_videos_sync(self, username: str, max_results: int = MAX_VIDEOS):

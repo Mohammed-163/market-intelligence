@@ -20,18 +20,23 @@ class YouTubeCollector:
     def collect_videos(self, channel_id: str, max_results: int = MAX_VIDEOS) -> dict:
         if not self.rotator:
             logger.warning("No YouTube keys configured. Skipping YouTube collection.")
-            return {"raw_data": [], "account": None, "posts": [], "comments": []}
+            return {}
             
         raw_data = self._collect(channel_id, max_results)
+        videos_raw = raw_data.get("videos", [])
+        comments_raw = raw_data.get("comments", [])
         
         from models.account import Account
         from models.post import Post
+        from models.comment import Comment
+        from datetime import datetime, timezone
         
         account = None
         posts = []
+        parsed_comments = []
         
-        if raw_data:
-            first = raw_data[0].get("snippet", {})
+        if videos_raw:
+            first = videos_raw[0].get("snippet", {})
             account = Account(
                 platform="youtube",
                 username=first.get("channelTitle", channel_id),
@@ -41,32 +46,88 @@ class YouTubeCollector:
                 bio=None
             )
             
-            for item in raw_data:
+            for item in videos_raw:
                 snippet = item.get("snippet", {})
                 id_info = item.get("id", {})
+                stats = item.get("statistics", {})
+                
                 post = Post(
                     post_id=id_info.get("videoId", ""),
                     caption=snippet.get("title", ""),
-                    likes=None,
-                    comments=None,
-                    views=None,
+                    likes=int(stats.get("likeCount", 0)) if stats.get("likeCount") else None,
+                    comments=int(stats.get("commentCount", 0)) if stats.get("commentCount") else None,
+                    views=int(stats.get("viewCount", 0)) if stats.get("viewCount") else None,
                     posted_at=snippet.get("publishedAt"),
                     type="video"
                 )
                 posts.append(post)
                 
+            for c in comments_raw:
+                snippet = c.get("snippet", {}).get("topLevelComment", {}).get("snippet", {})
+                parsed_c = Comment(
+                    comment_id=c.get("id", ""),
+                    author=snippet.get("authorDisplayName", ""),
+                    text=snippet.get("textDisplay", ""),
+                    likes=snippet.get("likeCount", 0)
+                )
+                parsed_comments.append(parsed_c)
+                
+        metadata = {
+            "collection_date": datetime.now(timezone.utc).isoformat(),
+            "platform": "youtube",
+            "collector_version": "2.0",
+            "api_used": "youtube_v3",
+            "account_requested": channel_id
+        }
+                
         return {
-            "raw_data": raw_data,
-            "account": account,
-            "posts": posts,
-            "comments": []
+            "metadata": metadata,
+            "raw_account": [videos_raw[0]] if videos_raw else [],
+            "raw_posts": videos_raw,
+            "raw_comments": comments_raw,
+            "normalized_account": account.to_dict() if account else {},
+            "normalized_posts": [p.to_dict() for p in posts],
+            "competitors": []
         }
 
     @with_retry(error_patterns=YOUTUBE_ROTATION_ERRORS, http_codes=YOUTUBE_ROTATION_HTTP_CODES)
-    def _collect(self, channel_id: str, max_results: int) -> list:
+    def _collect(self, channel_id: str, max_results: int) -> dict:
         yt   = build("youtube", "v3", developerKey=self.rotator.get_current_key())
         resp = yt.search().list(
             part="snippet", channelId=channel_id,
             maxResults=max_results, order="date", type="video",
         ).execute()
-        return resp.get("items", [])
+        
+        videos = resp.get("items", [])
+        if not videos:
+            return {"videos": [], "comments": []}
+            
+        video_ids = [v["id"]["videoId"] for v in videos if "id" in v and "videoId" in v["id"]]
+        
+        if video_ids:
+            stats_resp = yt.videos().list(
+                part="statistics",
+                id=",".join(video_ids)
+            ).execute()
+            
+            stats_map = {item["id"]: item["statistics"] for item in stats_resp.get("items", [])}
+            for v in videos:
+                vid = v["id"]["videoId"]
+                if vid in stats_map:
+                    v["statistics"] = stats_map[vid]
+                    
+        all_comments = []
+        for vid in video_ids:
+            try:
+                c_resp = yt.commentThreads().list(
+                    part="snippet",
+                    videoId=vid,
+                    maxResults=20
+                ).execute()
+                for c in c_resp.get("items", []):
+                    c["videoId"] = vid
+                    all_comments.append(c)
+            except Exception as e:
+                logger.warning(f"Failed to fetch comments for video {vid}: {e}")
+                
+        return {"videos": videos, "comments": all_comments}

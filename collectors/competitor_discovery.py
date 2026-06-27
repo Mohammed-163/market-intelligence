@@ -30,14 +30,32 @@ class CompetitorDiscovery:
         response = request.execute()
         
         results = []
-        for item in response.get("items", []):
-            snippet = item.get("snippet", {})
-            competitor = Competitor(
-                username=snippet.get("channelTitle"),
-                platform="youtube",
-                followers=None
-            )
-            results.append(competitor)
+        channel_ids = [c["id"]["channelId"] for c in response.get("items", []) if "channelId" in c.get("id", {})]
+        
+        if channel_ids:
+            channel_resp = youtube.channels().list(
+                part="snippet,statistics",
+                id=",".join(channel_ids)
+            ).execute()
+            
+            for item in channel_resp.get("items", []):
+                snippet = item.get("snippet", {})
+                stats = item.get("statistics", {})
+                
+                competitor = Competitor(
+                    username=snippet.get("title", ""),
+                    full_name=snippet.get("customUrl", ""),
+                    platform="youtube",
+                    followers=int(stats.get("subscriberCount", 0)) if stats.get("subscriberCount") else None,
+                    following=None,
+                    posts_count=int(stats.get("videoCount", 0)) if stats.get("videoCount") else None,
+                    bio=snippet.get("description", ""),
+                    external_url=f"https://youtube.com/{snippet.get('customUrl', '')}",
+                    category=None,
+                    verified=None
+                )
+                results.append(competitor)
+                
         return {"raw_data": response, "competitors": results}
 
     @with_retry(rotator=settings.apify_rotator, error_patterns=APIFY_ROTATION_ERRORS, http_codes=APIFY_ROTATION_HTTP_CODES)
@@ -65,8 +83,10 @@ class CompetitorDiscovery:
                 seen.add(username)
                 competitor = Competitor(
                     username=username,
+                    full_name=item.get("ownerFullName"),
                     platform="instagram",
-                    followers=None
+                    followers=None, # Not reliably available in hashtag search without a second API call
+                    bio=None
                 )
                 results.append(competitor)
                 if len(results) >= MAX_COMPETITORS:

@@ -20,15 +20,19 @@ class InstagramCollector:
     def collect_posts(self, username: str, max_results: int = MAX_POSTS) -> dict:
         if not self.rotator:
             logger.warning("No Apify keys configured. Skipping Instagram collection.")
-            return {"raw_data": [], "account": None, "posts": [], "comments": []}
+            return {}
             
         raw_data = self._collect(username, max_results)
         
         from models.account import Account
         from models.post import Post
+        from models.comment import Comment
+        from datetime import datetime, timezone
         
         account = None
         posts = []
+        raw_comments = []
+        parsed_comments = []
         
         if raw_data:
             first = raw_data[0]
@@ -53,13 +57,34 @@ class InstagramCollector:
                 )
                 posts.append(post)
                 
-        return {
-            "raw_data": raw_data,
-            "account": account,
-            "posts": posts,
-            "comments": []
+                if 'latestComments' in item and item['latestComments']:
+                    for c in item['latestComments']:
+                        raw_comments.append(c)
+                        parsed_c = Comment(
+                            comment_id=c.get('id', ''),
+                            author=c.get('ownerUsername', ''),
+                            text=c.get('text', ''),
+                            likes=c.get('likesCount')
+                        )
+                        parsed_comments.append(parsed_c)
+                        
+        metadata = {
+            "collection_date": datetime.now(timezone.utc).isoformat(),
+            "platform": "instagram",
+            "collector_version": "2.0",
+            "api_used": "apify/instagram-scraper",
+            "account_requested": username
         }
 
+        return {
+            "metadata": metadata,
+            "raw_account": [raw_data[0]] if raw_data else [],
+            "raw_posts": raw_data,
+            "raw_comments": raw_comments,
+            "normalized_account": account.to_dict() if account else {},
+            "normalized_posts": [p.to_dict() for p in posts],
+            "competitors": [] # if comments need to be saved independently, we could map them, but normalized_posts should suffice or add normalized_comments
+        }
     @with_retry(error_patterns=APIFY_ROTATION_ERRORS, http_codes=APIFY_ROTATION_HTTP_CODES)
     def _collect(self, username: str, max_results: int) -> list:
         api_key = self.rotator.get_current_key()
