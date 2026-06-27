@@ -4,7 +4,7 @@ google-auth==2.37.0
 google-auth-httplib2==0.2.0
 
 # Apify (Instagram + TikTok scraping)
-apify-client==1.8.1
+apify-client>=3.0.0
 
 # TikTok unofficial API (primary attempt before Apify fallback)
 TikTokApi==6.5.2
