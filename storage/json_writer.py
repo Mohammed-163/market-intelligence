@@ -10,41 +10,25 @@ class JSONWriter:
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
     @staticmethod
-    def save_account(account_dict: dict):
-        path = f"data/accounts/{account_dict['platform']}_{account_dict['username']}.json"
-        JSONWriter._ensure_dir(path)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(account_dict, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved account to {path}")
+    def save_account_data(platform: str, username: str, payload: dict):
+        base_dir = f"data/{platform}_{username}"
+        JSONWriter._ensure_dir(base_dir)
 
-    @staticmethod
-    def save_posts(platform: str, username: str, posts_list: list):
-        path = f"data/posts/{platform}_{username}.json"
-        JSONWriter._ensure_dir(path)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(posts_list, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved {len(posts_list)} posts to {path}")
+        # Mapping keys in the payload to filenames
+        file_mapping = {
+            "metadata": "metadata.json",
+            "raw_account": "raw_account.json",
+            "raw_posts": "raw_posts.json",
+            "raw_comments": "raw_comments.json",
+            "normalized_account": "normalized_account.json",
+            "normalized_posts": "normalized_posts.json",
+            "competitors": "competitors.json"
+        }
 
-    @staticmethod
-    def save_comments(platform: str, username: str, post_id: str, comments_list: list):
-        path = f"data/comments/{platform}_{username}_{post_id}.json"
-        JSONWriter._ensure_dir(path)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(comments_list, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved {len(comments_list)} comments to {path}")
-
-    @staticmethod
-    def save_competitors(platform: str, keyword: str, competitors_list: list):
-        path = f"data/competitors/{platform}_{keyword}.json"
-        JSONWriter._ensure_dir(path)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(competitors_list, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved {len(competitors_list)} competitors to {path}")
-
-    @staticmethod
-    def save_raw_response(platform: str, username: str, file_name: str, data):
-        path = f"data/raw/{platform}/{username}/{file_name}"
-        JSONWriter._ensure_dir(path)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved raw response to {path}")
+        for key, filename in file_mapping.items():
+            if key in payload and payload[key] is not None:
+                path = os.path.join(base_dir, filename)
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(payload[key], f, indent=2, ensure_ascii=False)
+                
+        logger.info(f"Saved complete data package for {platform}_{username} to {base_dir}/")
