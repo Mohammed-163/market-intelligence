@@ -21,20 +21,7 @@ jobs:
           
       - name: Install requirements
         run: pip install -r requirements.txt
-
-        - name: Debug Environment
-  env:
-    APIFY_1: ${{ secrets.APIFY_1 }}
-    APIFY_2: ${{ secrets.APIFY_2 }}
-    APIFY_3: ${{ secrets.APIFY_3 }}
-  run: |
-    python -c "
-import os
-print('APIFY_1:', bool(os.environ.get('APIFY_1')))
-print('APIFY_2:', bool(os.environ.get('APIFY_2')))
-print('APIFY_3:', bool(os.environ.get('APIFY_3')))
-"
-
+        
       - name: Execute Instagram Collector Test
         env:
           APIFY_1: ${{ secrets.APIFY_1 }}
