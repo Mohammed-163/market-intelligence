@@ -17,12 +17,47 @@ class YouTubeCollector:
             if secrets.youtube_keys else None
         )
 
+    def _resolve_channel_id(self, identifier: str) -> str:
+        identifier = identifier.strip()
+        # If it's already a UC... ID
+        if identifier.startswith('UC') and len(identifier) == 24:
+            return identifier
+            
+        # Extract handle from URL or @
+        if 'youtube.com' in identifier or 'youtu.be' in identifier:
+            import re
+            match = re.search(r'(?:youtube\.com\/(?:@|c\/|user\/|channel\/)?|youtu\.be\/)([\w-]+)', identifier)
+            if match:
+                identifier = match.group(1)
+        
+        # If it's a handle, search for it
+        if not identifier.startswith('UC') or len(identifier) != 24:
+            if not self.rotator:
+                return identifier
+            try:
+                from googleapiclient.discovery import build
+                api_key = self.rotator.get_current_key()
+                youtube = build('youtube', 'v3', developerKey=api_key)
+                # Ensure the search term starts with @ if it's likely a handle
+                search_term = identifier if identifier.startswith('@') else f"@{identifier}"
+                request = youtube.search().list(part="snippet", q=search_term, type="channel", maxResults=1)
+                response = request.execute()
+                items = response.get("items", [])
+                if items:
+                    return items[0]["id"]["channelId"]
+            except Exception as e:
+                logger.warning(f"Failed to resolve channel handle {identifier}: {e}")
+                
+        return identifier
+
     def collect_videos(self, channel_id: str, max_results: int = MAX_VIDEOS, cache=None) -> dict:
         if not self.rotator:
             logger.warning("No YouTube keys configured. Skipping YouTube collection.")
             return {}
             
-        cache_key = f"youtube:{channel_id.strip().lower()}:{max_results}"
+        resolved_id = self._resolve_channel_id(channel_id)
+            
+        cache_key = f"youtube:{resolved_id.strip().lower()}:{max_results}"
         raw_data = None
         if cache:
             try:
@@ -33,7 +68,7 @@ class YouTubeCollector:
                 logger.warning(f"Cache read failed: {e}")
 
         if raw_data is None:
-            raw_data = self._collect(channel_id, max_results)
+            raw_data = self._collect(resolved_id, max_results)
             if cache and raw_data and raw_data.get("videos"):
                 try:
                     cache.set(cache_key, raw_data)

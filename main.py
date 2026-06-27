@@ -9,6 +9,7 @@ from collectors.competitor_discovery import CompetitorDiscovery
 from storage.json_writer import JSONWriter
 from storage.cache import Cache
 from config.constants import MAX_POSTS
+from utils.validators import validate_username
 
 logger = get_logger()
 
@@ -92,19 +93,28 @@ def main():
                 process_and_save(platform, f"discovery_{args.discover.replace(' ', '_')}", res, args.posts)
 
     if args.youtube:
-        collector = YouTubeCollector()
-        data = collector.collect_videos(args.youtube, max_results=args.posts, cache=cache)
-        process_and_save("youtube", args.youtube, data, args.posts)
+        if not validate_username(args.youtube, "youtube"):
+            logger.error(f"Invalid YouTube channel or handle: {args.youtube}")
+        else:
+            collector = YouTubeCollector()
+            data = collector.collect_videos(args.youtube, max_results=args.posts, cache=cache)
+            process_and_save("youtube", args.youtube, data, args.posts)
         
     if args.instagram:
-        collector = InstagramCollector()
-        data = collector.collect_posts(args.instagram, max_results=args.posts, cache=cache)
-        process_and_save("instagram", args.instagram, data, args.posts)
+        if not validate_username(args.instagram, "instagram"):
+            logger.error(f"Invalid Instagram username: {args.instagram}")
+        else:
+            collector = InstagramCollector()
+            data = collector.collect_posts(args.instagram, max_results=args.posts, cache=cache)
+            process_and_save("instagram", args.instagram, data, args.posts)
         
     if args.tiktok:
-        collector = TikTokCollector()
-        data = collector.collect_videos_sync(args.tiktok, max_results=args.posts, cache=cache)
-        process_and_save("tiktok", args.tiktok, data, args.posts)
+        if not validate_username(args.tiktok, "tiktok"):
+            logger.error(f"Invalid TikTok username: {args.tiktok}")
+        else:
+            collector = TikTokCollector()
+            data = collector.collect_videos_sync(args.tiktok, max_results=args.posts, cache=cache)
+            process_and_save("tiktok", args.tiktok, data, args.posts)
         
     if not any([args.youtube, args.instagram, args.tiktok, args.discover]):
         logger.warning("No targets specified. Use --help for usage.")
