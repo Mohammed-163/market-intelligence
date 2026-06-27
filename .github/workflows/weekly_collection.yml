@@ -21,7 +21,7 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
         
-      - name: Discover Competitors and Collect
+      - name: Collect Data
         env:
           APIFY_1: ${{ secrets.APIFY_1 }}
           APIFY_2: ${{ secrets.APIFY_2 }}
@@ -29,7 +29,11 @@ jobs:
           YOUTUBE_1: ${{ secrets.YOUTUBE_1 }}
           YOUTUBE_2: ${{ secrets.YOUTUBE_2 }}
         run: |
-          python main.py --discover "tech"
+          # Test specific account
+          python main.py --instagram "smart.lens.iq" --posts 5
+          
+          # Optional: keep discovery running
+          # python main.py --discover "tech"
           
       - name: Upload Collected Data
         uses: actions/upload-artifact@v4
