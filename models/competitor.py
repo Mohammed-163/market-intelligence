@@ -16,6 +16,11 @@ class Competitor:
     profile_pic_url: Optional[str] = None
     sample_posts: Optional[list] = None
     channel_id: Optional[str] = None
+    # Discovery traceability
+    discovery_keyword: Optional[str] = None
+    # Deep collection status
+    deep_collection_status: Optional[str] = None  # "success" | "failed" | "skipped"
+    deep_collection_error: Optional[str] = None
 
     def to_dict(self):
         return asdict(self)

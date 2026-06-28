@@ -91,11 +91,12 @@ def _save_keywords(keywords: list, ig_username: str):
     logger.info(f"Saved {len(keywords)} extracted keywords for @{ig_username}")
 
 
-def _save_merged_competitors(platform: str, ig_username: str, competitors: list):
+def _save_merged_competitors(platform: str, ig_username: str, competitors: list, errors: list = None) -> dict:
     """Save deduplicated competitor list for a platform."""
-    if not competitors:
-        return
+    if not competitors and not errors:
+        return {}
 
+    logger.info(f"[TRACE] BEFORE SAVE: {len(competitors)} {platform} competitors")
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     metadata = {
         "source_account": ig_username,
@@ -111,27 +112,38 @@ def _save_merged_competitors(platform: str, ig_username: str, competitors: list)
         for c in competitors
     ]
 
-    # Save normalized competitor data
-    JSONWriter.save_entity(
-        "competitors", platform, f"pipeline_{ig_username}", timestamp,
-        metadata, competitors_serialized, []
-    )
+    logger.info(f"[TRACE] SENDING TO JSONWRITER: {len(competitors_serialized)} competitors")
+    
+    competitors_file = None
+    if competitors_serialized:
+        logger.info(f"[TRACE] FILE WILL BE CREATED AT: data/competitors/{platform}_pipeline_{ig_username}_{timestamp}.json")
+        # Save normalized competitor data
+        competitors_file = JSONWriter.save_entity(
+            "competitors", platform, f"pipeline_{ig_username}", timestamp,
+            metadata, competitors_serialized, []
+        )
 
-    # Save raw competitor data separately
-    JSONWriter.save_pure_raw(
-        platform, f"competitors_{ig_username}", timestamp,
-        competitors_serialized
-    )
+        # Save raw competitor data separately
+        JSONWriter.save_pure_raw(
+            platform, f"competitors_{ig_username}", timestamp,
+            competitors_serialized
+        )
 
     # Save manifest
     manifest = {
-        "competitors_file": f"data/competitors/{platform}_pipeline_{ig_username}_{timestamp}.json",
-        "raw_file": f"data/raw/{platform}/competitors_{ig_username}_{timestamp}.json",
-        "competitor_count": len(competitors),
+        "status": "partial_success" if errors else "success",
+        "partial_results_saved": bool(competitors_file),
+        f"{platform}_competitors_collected": len(competitors_serialized),
+        "errors": errors or [],
         "source_account": ig_username,
     }
+    if competitors_file:
+        manifest["competitors_file"] = competitors_file
+        manifest["raw_file"] = f"data/raw/{platform}/competitors_{ig_username}_{timestamp}.json"
+        
     JSONWriter.save_manifest(platform, f"pipeline_{ig_username}", timestamp, manifest)
     logger.info(f"Saved {len(competitors)} deduplicated {platform} competitors for @{ig_username}")
+    return manifest
 
 
 def run_pipeline(ig_username: str, posts_limit: int, cache, settings=None):
@@ -199,6 +211,10 @@ def run_pipeline(ig_username: str, posts_limit: int, cache, settings=None):
     ig_competitors = []
     yt_competitors = []
     tiktok_result = None
+    
+    global_errors = []
+    ig_discovered_count = 0
+    yt_discovered_count = 0
 
     for keyword in keywords:
         logger.info(f"[Phase 3] Processing keyword: '{keyword}'")
@@ -207,15 +223,14 @@ def run_pipeline(ig_username: str, posts_limit: int, cache, settings=None):
         try:
             ig_result = discovery.discover_competitors(keyword, "instagram", cache=cache)
             if ig_result and ig_result.get("competitors"):
+                ig_discovered_count += len(ig_result["competitors"])
                 for comp in ig_result["competitors"]:
                     comp_obj = comp if hasattr(comp, 'username') else None
                     if comp_obj is None:
-                        # Came from cache as dict
                         key = comp.get("username", "").lower()
                     else:
                         key = comp_obj.username.lower()
 
-                    # Skip the source account itself
                     if key == ig_username.lower():
                         continue
 
@@ -224,11 +239,13 @@ def run_pipeline(ig_username: str, posts_limit: int, cache, settings=None):
                         ig_competitors.append(comp)
         except Exception as e:
             logger.error(f"Instagram discovery failed for '{keyword}': {e}")
+            global_errors.append({"platform": "instagram", "keyword": keyword, "error": str(e)})
 
         # ── YouTube discovery ──
         try:
             yt_result = discovery.discover_competitors(keyword, "youtube", cache=cache)
             if yt_result and yt_result.get("competitors"):
+                yt_discovered_count += len(yt_result["competitors"])
                 for comp in yt_result["competitors"]:
                     if hasattr(comp, 'channel_id'):
                         key = comp.channel_id
@@ -241,13 +258,13 @@ def run_pipeline(ig_username: str, posts_limit: int, cache, settings=None):
                         yt_seen.add(key)
                         yt_competitors.append(comp)
                     elif not key:
-                        # No channel_id, fallback to username dedup
                         uname = comp.username if hasattr(comp, 'username') else comp.get("username", "")
                         if uname and uname not in yt_seen:
                             yt_seen.add(uname)
                             yt_competitors.append(comp)
         except Exception as e:
             logger.error(f"YouTube discovery failed for '{keyword}': {e}")
+            global_errors.append({"platform": "youtube", "keyword": keyword, "error": str(e)})
 
         # ── TikTok discovery (try once, not per keyword) ──
         if tiktok_result is None:
@@ -255,6 +272,7 @@ def run_pipeline(ig_username: str, posts_limit: int, cache, settings=None):
                 tiktok_result = discovery.discover_competitors(keyword, "tiktok", cache=cache)
                 if tiktok_result and tiktok_result.get("supported") is False:
                     logger.info(f"[Phase 3] TikTok discovery: {tiktok_result.get('reason', 'Not supported')}")
+                    global_errors.append({"platform": "tiktok", "error": tiktok_result.get("reason")})
                 elif tiktok_result and tiktok_result.get("competitors"):
                     for comp in tiktok_result["competitors"]:
                         key = comp.username.lower() if hasattr(comp, 'username') else comp.get("username", "").lower()
@@ -263,29 +281,48 @@ def run_pipeline(ig_username: str, posts_limit: int, cache, settings=None):
             except Exception as e:
                 logger.warning(f"TikTok discovery failed: {e}")
                 tiktok_result = {"supported": False, "reason": f"TikTok discovery failed: {e}"}
+                global_errors.append({"platform": "tiktok", "error": str(e)})
+
+    logger.info(f"[TRACE] AFTER DEDUPLICATION:")
+    logger.info(f"[TRACE]   Instagram competitors: {len(ig_competitors)}")
+    logger.info(f"[TRACE]   YouTube competitors:   {len(yt_competitors)}")
 
     # ─────────────────────────────────────────────
     # Phase 5: Save deduplicated results
     # ─────────────────────────────────────────────
     logger.info("[Phase 5] Saving deduplicated competitors...")
-    logger.info(f"  Instagram: {len(ig_competitors)} unique competitors")
-    logger.info(f"  YouTube:   {len(yt_competitors)} unique competitors")
 
-    _save_merged_competitors("instagram", ig_username, ig_competitors)
-    _save_merged_competitors("youtube", ig_username, yt_competitors)
+    ig_errors = [e for e in global_errors if e["platform"] == "instagram"]
+    yt_errors = [e for e in global_errors if e["platform"] == "youtube"]
 
-    # Save TikTok status
+    _save_merged_competitors("instagram", ig_username, ig_competitors, errors=ig_errors)
+    _save_merged_competitors("youtube", ig_username, yt_competitors, errors=yt_errors)
+
     if tiktok_result:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        JSONWriter.save_entity(
-            "competitors", "tiktok", f"pipeline_{ig_username}", timestamp,
-            {"source_account": ig_username, "platform": "tiktok"},
-            tiktok_result, []
-        )
+        tk_errors = [e for e in global_errors if e["platform"] == "tiktok"]
+        manifest = {
+            "status": "partial_success" if tk_errors else "success",
+            "source_account": ig_username,
+            "platform": "tiktok",
+            "errors": tk_errors,
+            "reason": tiktok_result.get("reason")
+        }
+        JSONWriter.save_manifest("tiktok", f"pipeline_{ig_username}", timestamp, manifest)
+
+    # Calculate final stats
+    ig_collected = sum(1 for c in ig_competitors if getattr(c, 'deep_collection_status', None) == 'success')
+    yt_collected = sum(1 for c in yt_competitors if getattr(c, 'deep_collection_status', None) == 'success')
 
     logger.info("=" * 60)
-    logger.info(f"PIPELINE COMPLETE — @{ig_username}")
-    logger.info(f"  Keywords used:          {len(keywords)}")
-    logger.info(f"  Instagram competitors:  {len(ig_competitors)}")
-    logger.info(f"  YouTube competitors:    {len(yt_competitors)}")
+    logger.info("========== EXECUTION SUMMARY ==========")
+    logger.info(f"Source Account: @{ig_username}")
+    logger.info(f"Keywords Generated: {len(keywords)}")
+    logger.info(f"Instagram competitors discovered: {ig_discovered_count}")
+    logger.info(f"Instagram competitors collected:  {ig_collected} (total deduped: {len(ig_competitors)})")
+    logger.info(f"YouTube competitors discovered:   {yt_discovered_count}")
+    logger.info(f"YouTube competitors collected:    {yt_collected} (total deduped: {len(yt_competitors)})")
+    logger.info(f"TikTok competitors collected:     0 (Unsupported)")
+    logger.info(f"Total failures encountered:       {len(global_errors)}")
+    logger.info(f"Partial results saved:            True")
     logger.info("=" * 60)

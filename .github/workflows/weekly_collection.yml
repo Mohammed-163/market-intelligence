@@ -30,12 +30,14 @@ jobs:
           YOUTUBE_2: ${{ secrets.YOUTUBE_2 }}
           GEMINI_1: ${{ secrets.GEMINI_1 }}
           GEMINI_2: ${{ secrets.GEMINI_2 }}
-          IG_USER: ${{ vars.IG_USER }}
+          IG_USER_VAR: ${{ vars.IG_USER }}
+          IG_USER_SECRET: ${{ secrets.IG_USER }}
         run: |
-          echo "IG_USER=$IG_USER"
+          IG_USER="${IG_USER_VAR:-$IG_USER_SECRET}"
+          echo "IG_USER Loaded"
           
           if [ -z "$IG_USER" ]; then
-            echo "ERROR: IG_USER variable is not set. Go to Settings > Secrets and variables > Actions > Variables and add IG_USER."
+            echo "ERROR: IG_USER variable is not set. Go to Settings > Secrets and variables > Actions and add IG_USER."
             exit 1
           fi
           

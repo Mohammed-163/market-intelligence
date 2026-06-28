@@ -93,7 +93,7 @@ class CompetitorDiscovery:
                     username=username,
                     full_name=item.get("ownerFullName"),
                     platform="instagram",
-                    followers=None, # Not reliably available in hashtag search without a second API call
+                    followers=None,
                     bio=None
                 )
                 results.append(competitor)
@@ -103,23 +103,26 @@ class CompetitorDiscovery:
         return {"raw_data": raw_items, "competitors": results}
 
     def discover_competitors(self, keyword: str, platform: str, cache=None) -> dict:
-        logger.info("Starting competitor discovery...")
+        logger.info(f"Starting competitor discovery for '{keyword}' on {platform}...")
+
         if platform.lower() == "tiktok":
+            logger.info("[tiktok] TikTok competitor discovery is not supported. Returning graceful degradation.")
             return {
                 "supported": False,
-                "reason": "TikTok competitor discovery is currently not supported."
+                "reason": "TikTok competitor discovery is currently unavailable.",
+                "platform": "tiktok",
+                "keyword": keyword,
             }
 
         logger.info(f"Discovering up to {MAX_COMPETITORS} competitors for '{keyword}' on {platform}")
         
         cache_key = f"competitors:{platform.lower()}:{keyword.lower().replace(' ', '_')}"
-        raw_data = None
         if cache:
             try:
-                raw_data = cache.get(cache_key)
-                if raw_data is not None:
+                cached = cache.get(cache_key)
+                if cached is not None:
                     logger.info(f"Cache hit for discovery '{keyword}' on {platform} — skipping API call.")
-                    return raw_data
+                    return cached
             except Exception as e:
                 logger.warning(f"Cache read failed: {e}")
 
@@ -128,71 +131,123 @@ class CompetitorDiscovery:
         elif platform.lower() == "instagram":
             result = self._discover_instagram(keyword)
         else:
-            logger.warning(f"Discovery for platform '{platform}' is not fully implemented or supported.")
-            result = {"raw_data": [], "competitors": []}
-            
-        # Deep Collection Logic
+            logger.warning(f"Discovery for platform '{platform}' is not implemented.")
+            return {"raw_data": [], "competitors": []}
+
+        # ── TRACE: after discovery ──
+        discovered_count = len(result.get("competitors", []))
+        logger.info(f"[TRACE] AFTER DISCOVERY [{platform}]['{keyword}']: found {discovered_count} competitors")
+
+        # Stamp discovery_keyword on every competitor
+        for comp in result.get("competitors", []):
+            comp.discovery_keyword = keyword
+
+        # ── Deep Collection ──
         if result and result.get("competitors"):
             competitors_list = result["competitors"]
-            
-            # Instagram Deep Collection
+            succeeded = 0
+            failed = 0
+
             if platform.lower() == "instagram":
                 from collectors.instagram_collector import InstagramCollector
                 ig_collector = InstagramCollector()
-                
+
                 for i, comp in enumerate(competitors_list):
                     if i >= MAX_COMPETITOR_DEEP_COLLECTION:
-                        break
-                    logger.info(f"Deep collecting Instagram competitor: {comp.username}")
-                    data = ig_collector.collect_posts(comp.username, max_results=5, cache=cache)
-                    
-                    norm_account = data.get("normalized_account", {})
-                    norm_posts = data.get("normalized_posts", [])
-                    
-                    comp.full_name = norm_account.get("full_name", comp.full_name)
-                    comp.followers = norm_account.get("followers", comp.followers)
-                    comp.following = norm_account.get("following", comp.following)
-                    comp.posts_count = norm_account.get("posts_count", comp.posts_count)
-                    comp.bio = norm_account.get("bio", comp.bio)
-                    comp.verified = norm_account.get("verified", comp.verified)
-                    comp.profile_pic_url = norm_account.get("profile_pic_url", None)
-                    comp.external_url = norm_account.get("external_url", comp.external_url)
-                    comp.sample_posts = norm_posts
-            
-            # YouTube Deep Collection
+                        comp.deep_collection_status = "skipped"
+                        continue
+
+                    logger.info(f"[instagram] Deep collecting competitor #{i+1}: @{comp.username}")
+                    try:
+                        data = ig_collector.collect_posts(comp.username, max_results=5, cache=cache)
+
+                        # Guard: if API returned error struct, don't enrich
+                        if not data or data.get("success") is False:
+                            raise RuntimeError(data.get("error", {}).get("message", "Empty response"))
+
+                        norm_account = data.get("normalized_account", {})
+                        norm_posts = data.get("normalized_posts", [])
+
+                        comp.full_name = norm_account.get("full_name", comp.full_name)
+                        comp.followers = norm_account.get("followers", comp.followers)
+                        comp.following = norm_account.get("following", comp.following)
+                        comp.posts_count = norm_account.get("posts_count", comp.posts_count)
+                        comp.bio = norm_account.get("bio", comp.bio)
+                        comp.verified = norm_account.get("verified", comp.verified)
+                        comp.profile_pic_url = norm_account.get("profile_pic_url", None)
+                        comp.external_url = norm_account.get("external_url", comp.external_url)
+                        comp.sample_posts = norm_posts
+                        comp.deep_collection_status = "success"
+                        succeeded += 1
+
+                    except Exception as e:
+                        failed += 1
+                        comp.deep_collection_status = "failed"
+                        comp.deep_collection_error = str(e)[:200]
+                        logger.error(
+                            f"[instagram] Deep collection FAILED for @{comp.username} "
+                            f"(keyword='{keyword}'): {e}. "
+                            f"Saving competitor with basic discovery data only."
+                        )
+                        # ← CRITICAL: do NOT break or raise — continue to next competitor
+
             elif platform.lower() == "youtube":
                 from collectors.youtube_collector import YouTubeCollector
                 yt_collector = YouTubeCollector()
-                
+
                 for i, comp in enumerate(competitors_list):
                     if i >= MAX_COMPETITOR_DEEP_COLLECTION:
-                        break
-                    
-                    logger.info(f"Deep collecting YouTube competitor: {comp.username}")
-                    data = yt_collector.collect_videos(comp.username, max_results=5, cache=cache)
-                    
-                    norm_account = data.get("normalized_account", {})
-                    norm_posts = data.get("normalized_posts", [])
-                    
-                    comp.full_name = norm_account.get("full_name", comp.full_name)
-                    comp.followers = norm_account.get("followers", comp.followers)
-                    comp.following = norm_account.get("following", comp.following)
-                    comp.posts_count = norm_account.get("posts_count", comp.posts_count)
-                    comp.bio = norm_account.get("bio", comp.bio)
-                    comp.verified = norm_account.get("verified", comp.verified)
-                    comp.profile_pic_url = norm_account.get("profile_pic_url", None)
-                    comp.external_url = norm_account.get("external_url", comp.external_url)
-                    comp.sample_posts = norm_posts
+                        comp.deep_collection_status = "skipped"
+                        continue
 
+                    logger.info(f"[youtube] Deep collecting competitor #{i+1}: {comp.username}")
+                    try:
+                        data = yt_collector.collect_videos(comp.username, max_results=5, cache=cache)
+
+                        if not data or data.get("success") is False:
+                            raise RuntimeError(data.get("error", {}).get("message", "Empty response"))
+
+                        norm_account = data.get("normalized_account", {})
+                        norm_posts = data.get("normalized_posts", [])
+
+                        comp.full_name = norm_account.get("full_name", comp.full_name)
+                        comp.followers = norm_account.get("followers", comp.followers)
+                        comp.following = norm_account.get("following", comp.following)
+                        comp.posts_count = norm_account.get("posts_count", comp.posts_count)
+                        comp.bio = norm_account.get("bio", comp.bio)
+                        comp.verified = norm_account.get("verified", comp.verified)
+                        comp.profile_pic_url = norm_account.get("profile_pic_url", None)
+                        comp.external_url = norm_account.get("external_url", comp.external_url)
+                        comp.sample_posts = norm_posts
+                        comp.deep_collection_status = "success"
+                        succeeded += 1
+
+                    except Exception as e:
+                        failed += 1
+                        comp.deep_collection_status = "failed"
+                        comp.deep_collection_error = str(e)[:200]
+                        logger.error(
+                            f"[youtube] Deep collection FAILED for {comp.username} "
+                            f"(keyword='{keyword}'): {e}. "
+                            f"Saving competitor with basic discovery data only."
+                        )
+                        # ← CRITICAL: do NOT break or raise — continue to next competitor
+
+            logger.info(
+                f"[{platform}]['{keyword}'] Deep collection complete: "
+                f"{succeeded} succeeded, {failed} failed, "
+                f"{len(competitors_list) - succeeded - failed} skipped."
+            )
+
+            # Cache the result (including partial/failed competitors)
             if cache:
                 try:
                     cache_payload = {
-                        "raw_data": result["raw_data"],
+                        "raw_data": result["raw_data"] if isinstance(result.get("raw_data"), list) else [],
                         "competitors": [c.to_dict() if hasattr(c, 'to_dict') else c for c in competitors_list]
                     }
                     cache.set(cache_key, cache_payload)
                 except Exception as e:
                     logger.warning(f"Cache write failed: {e}")
-                
-        return result
 
+        return result

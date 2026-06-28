@@ -10,9 +10,9 @@ class SecretKeys:
 
 class SecretsManager:
     _ENV_MAP = {
-        "youtube": ["YOUTUBE_1", "YOUTUBE_2"],
+        "youtube": ["YOUTUBE_1", "YOUTUBE_2", "YOUTUBE_3", "YOUTUBE_4", "YOUTUBE_5"],
         "apify": ["APIFY_1", "APIFY_2", "APIFY_3"],
-        "gemini": ["GEMINI_1", "GEMINI_2"],
+        "gemini": ["GEMINI_1", "GEMINI_2", "GEMINI_3"],
     }
 
     @classmethod

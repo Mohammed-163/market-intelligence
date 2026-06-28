@@ -1,6 +1,6 @@
 from googleapiclient.discovery import build
 from config.secrets_manager import SecretsManager
-from config.key_rotation import KeyRotator
+from config.key_rotation import KeyRotator, AllKeysExhaustedException
 from config.constants import YOUTUBE_ROTATION_ERRORS, YOUTUBE_ROTATION_HTTP_CODES, POOL_YOUTUBE, MAX_VIDEOS
 from utils.retry import with_retry
 from utils.logger import get_logger
@@ -9,13 +9,20 @@ logger = get_logger()
 
 
 class YouTubeCollector:
-    # BUG FIX: Settings.load() was at module level.
     def __init__(self):
         secrets = SecretsManager.load()
         self.rotator = (
             KeyRotator(POOL_YOUTUBE, secrets.youtube_keys)
             if secrets.youtube_keys else None
         )
+
+    @with_retry(error_patterns=YOUTUBE_ROTATION_ERRORS, http_codes=YOUTUBE_ROTATION_HTTP_CODES)
+    def _execute_search(self, search_term: str) -> dict:
+        """Helper to allow retry on channel resolution"""
+        api_key = self.rotator.get_current_key()
+        youtube = build('youtube', 'v3', developerKey=api_key)
+        request = youtube.search().list(part="snippet", q=search_term, type="channel", maxResults=1)
+        return request.execute()
 
     def _resolve_channel_id(self, identifier: str) -> str:
         identifier = identifier.strip()
@@ -35,13 +42,8 @@ class YouTubeCollector:
             if not self.rotator:
                 return identifier
             try:
-                from googleapiclient.discovery import build
-                api_key = self.rotator.get_current_key()
-                youtube = build('youtube', 'v3', developerKey=api_key)
-                # Ensure the search term starts with @ if it's likely a handle
                 search_term = identifier if identifier.startswith('@') else f"@{identifier}"
-                request = youtube.search().list(part="snippet", q=search_term, type="channel", maxResults=1)
-                response = request.execute()
+                response = self._execute_search(search_term)
                 items = response.get("items", [])
                 if items:
                     return items[0]["id"]["channelId"]
@@ -54,7 +56,7 @@ class YouTubeCollector:
         logger.info("Starting YouTube collection...")
         if not self.rotator:
             logger.warning("No YouTube keys configured. Skipping YouTube collection.")
-            return {}
+            return {"success": False, "error": {"type": "no_keys", "message": "No YouTube keys configured"}}
             
         resolved_id = self._resolve_channel_id(channel_id)
             
@@ -69,12 +71,34 @@ class YouTubeCollector:
                 logger.warning(f"Cache read failed: {e}")
 
         if raw_data is None:
-            raw_data = self._collect(resolved_id, max_results)
-            if cache and raw_data and raw_data.get("videos"):
-                try:
-                    cache.set(cache_key, raw_data)
-                except Exception as e:
-                    logger.warning(f"Cache write failed: {e}")
+            try:
+                raw_data = self._collect(resolved_id, max_results)
+                if cache and raw_data and raw_data.get("videos"):
+                    try:
+                        cache.set(cache_key, raw_data)
+                    except Exception as e:
+                        logger.warning(f"Cache write failed: {e}")
+            except AllKeysExhaustedException as e:
+                logger.error(f"All YouTube API keys exhausted while collecting {channel_id}.")
+                return {
+                    "success": False, 
+                    "error": {
+                        "type": "all_keys_exhausted", 
+                        "message": str(e)
+                    },
+                    "data": []
+                }
+            except Exception as e:
+                logger.error(f"YouTube API failed while collecting {channel_id}: {e}")
+                return {
+                    "success": False, 
+                    "error": {
+                        "type": "api_error", 
+                        "message": str(e)
+                    },
+                    "data": []
+                }
+                
         videos_raw = raw_data.get("videos", [])
         comments_raw = raw_data.get("comments", [])
         
@@ -133,6 +157,7 @@ class YouTubeCollector:
         }
                 
         return {
+            "success": True,
             "metadata": metadata,
             "raw_account": [videos_raw[0]] if videos_raw else [],
             "raw_posts": videos_raw,

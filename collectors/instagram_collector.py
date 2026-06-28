@@ -1,6 +1,6 @@
 from apify_client import ApifyClient
 from config.secrets_manager import SecretsManager
-from config.key_rotation import KeyRotator
+from config.key_rotation import KeyRotator, AllKeysExhaustedException
 from config.constants import APIFY_ROTATION_ERRORS, APIFY_ROTATION_HTTP_CODES, POOL_APIFY, MAX_POSTS
 from utils.retry import with_retry
 from utils.logger import get_logger
@@ -34,13 +34,33 @@ class InstagramCollector:
                 logger.warning(f"Cache read failed: {e}")
 
         if raw_data is None:
-            raw_data = self._collect(username, max_results)
-            if cache and raw_data:
-                try:
-                    cache.set(cache_key, raw_data)
-                except Exception as e:
-                    logger.warning(f"Cache write failed: {e}")
-        
+            try:
+                raw_data = self._collect(username, max_results)
+                if cache and raw_data:
+                    try:
+                        cache.set(cache_key, raw_data)
+                    except Exception as e:
+                        logger.warning(f"Cache write failed: {e}")
+            except AllKeysExhaustedException as e:
+                logger.error(f"All Apify API keys exhausted while collecting @{username}.")
+                return {
+                    "success": False, 
+                    "error": {
+                        "type": "all_keys_exhausted", 
+                        "message": str(e)
+                    },
+                    "data": []
+                }
+            except Exception as e:
+                logger.error(f"Apify API failed while collecting @{username}: {e}")
+                return {
+                    "success": False, 
+                    "error": {
+                        "type": "api_error", 
+                        "message": str(e)
+                    },
+                    "data": []
+                }
         from models.account import Account
         from models.post import Post
         from models.comment import Comment
@@ -94,6 +114,7 @@ class InstagramCollector:
         }
 
         return {
+            "success": True,
             "metadata": metadata,
             "raw_account": [raw_data[0]] if raw_data else [],
             "raw_posts": raw_data,
