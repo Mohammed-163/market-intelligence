@@ -142,6 +142,8 @@ def _save_merged_competitors(platform: str, ig_username: str, competitors: list,
         manifest["raw_file"] = f"data/raw/{platform}/competitors_{ig_username}_{timestamp}.json"
         
     JSONWriter.save_manifest(platform, f"pipeline_{ig_username}", timestamp, manifest)
+    prefix = "IG" if platform == "instagram" else "YT"
+    logger.info(f"[{prefix} TRACE] Saved={len(competitors)}")
     logger.info(f"Saved {len(competitors)} deduplicated {platform} competitors for @{ig_username}")
     return manifest
 
@@ -283,9 +285,8 @@ def run_pipeline(ig_username: str, posts_limit: int, cache, settings=None):
                 tiktok_result = {"supported": False, "reason": f"TikTok discovery failed: {e}"}
                 global_errors.append({"platform": "tiktok", "error": str(e)})
 
-    logger.info(f"[TRACE] AFTER DEDUPLICATION:")
-    logger.info(f"[TRACE]   Instagram competitors: {len(ig_competitors)}")
-    logger.info(f"[TRACE]   YouTube competitors:   {len(yt_competitors)}")
+    logger.info(f"[IG TRACE] competitors after dedup={len(ig_competitors)}")
+    logger.info(f"[YT TRACE] competitors after dedup={len(yt_competitors)}")
 
     # ─────────────────────────────────────────────
     # Phase 5: Save deduplicated results

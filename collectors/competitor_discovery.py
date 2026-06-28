@@ -77,6 +77,7 @@ class CompetitorDiscovery:
             "searchLimit": MAX_COMPETITORS
         }
         
+        logger.info(f"[IG TRACE] keyword={keyword}")
         run = client.actor("apify/instagram-scraper").call(run_input=run_input)
         
         dataset_id = run.get("defaultDatasetId") if isinstance(run, dict) else getattr(run, "defaultDatasetId", getattr(run, "default_dataset_id", None))
@@ -86,12 +87,21 @@ class CompetitorDiscovery:
         seen = set()
         for item in client.dataset(dataset_id).iterate_items():
             raw_items.append(item)
+            
+            # Flexible parsing depending on actor output
             username = item.get("ownerUsername")
+            if not username and isinstance(item.get("owner"), dict):
+                username = item["owner"].get("username")
+                
+            full_name = item.get("ownerFullName")
+            if not full_name and isinstance(item.get("owner"), dict):
+                full_name = item["owner"].get("full_name")
+                
             if username and username not in seen:
                 seen.add(username)
                 competitor = Competitor(
                     username=username,
-                    full_name=item.get("ownerFullName"),
+                    full_name=full_name,
                     platform="instagram",
                     followers=None,
                     bio=None
@@ -99,6 +109,9 @@ class CompetitorDiscovery:
                 results.append(competitor)
                 if len(results) >= MAX_COMPETITORS:
                     break
+        
+        logger.info(f"[IG TRACE] raw results count={len(raw_items)}")
+        logger.info(f"[IG TRACE] parsed competitors count={len(results)}")
                     
         return {"raw_data": raw_items, "competitors": results}
 

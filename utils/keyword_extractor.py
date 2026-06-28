@@ -60,7 +60,11 @@ def extract_keywords_with_gemini(collected_data: dict, gemini_key: str, max_keyw
         MAX_CONTEXT_CHARS = 50000
         text_block = f"Username: {username}\n\nBio: {full_bio}\n\nHashtags: {' '.join(all_hashtags)}\n\n"
         
-        for i, cap in enumerate(list(dict.fromkeys(all_captions))): # deduplicate captions
+        # Sort captions by length descending as a proxy for "richest content" if engagement isn't available
+        # Or just use the first N because raw_posts usually sorted by recency in Apify.
+        unique_captions = list(dict.fromkeys(all_captions))
+        
+        for i, cap in enumerate(unique_captions):
             addition = f"Caption {i+1}: {cap}\n"
             if len(text_block) + len(addition) > MAX_CONTEXT_CHARS:
                 text_block += "\n[Remaining captions truncated due to context limit]"
@@ -72,26 +76,31 @@ def extract_keywords_with_gemini(collected_data: dict, gemini_key: str, max_keyw
 {text_block}
 
 Keyword extraction requirements:
-1. You must return ONLY a valid JSON object.
-2. The JSON object must match this exact schema:
+1. You must return ONLY a valid JSON object matching this schema:
 {{
   "industry": "string",
-  "primary_keywords": ["string", "string"],
-  "secondary_keywords": ["string", "string"],
-  "sub_niches": ["string", "string"],
-  "competitor_search_keywords": ["string", "string"]
+  "primary_keywords": ["string"],
+  "secondary_keywords": ["string"],
+  "sub_niches": ["string"],
+  "competitor_search_keywords": ["string"]
 }}
-3. Ensure 'competitor_search_keywords' contains highly specific, niche-targeted phrases that would yield direct competitors in a YouTube/Instagram search.
-4. IMPORTANT: Filter out generic terms from 'competitor_search_keywords' like "photo", "photography", "business", "company", "service", "official", "viral", "fyp".
+2. Ensure 'competitor_search_keywords' contains highly specific, long-tail commercial search phrases that would yield direct competitors in a YouTube/Instagram search.
+3. FORBIDDEN WORDS: Do not use single words, brand names, usernames, or generic words like: lens, smart, اعلان, تصوير, photo, photography, business, company, service, official, viral, fyp.
+4. EXACT LENGTH REQUIREMENT: Every phrase in 'competitor_search_keywords' MUST be exactly 2 to 6 words long. Single words are completely banned.
 5. 'competitor_search_keywords' must have between 1 and {max_keywords} keywords.
 
 JSON Output:"""
+        
+        logger.info(f"[GEMINI TRACE] Prompt: {prompt[:300]}... (truncated)")
+        logger.info(f"[GEMINI TRACE] Context chars: {len(text_block)}")
         
         model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(prompt)
         
         import json
         text = response.text.strip()
+        logger.info(f"[GEMINI TRACE] Raw response: {text}")
+        
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
             
